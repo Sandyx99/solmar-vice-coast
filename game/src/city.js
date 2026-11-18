@@ -1,8 +1,9 @@
-// The city of Solmar: a sun-soaked coastal grid the builder lays out once from a seed.
-// Avenues run north-south, streets east-west; the blocks between them hold buildings,
-// parks, parking lots and plazas. Landmarks are fixed by name so missions can point at
-// them: Reyes Garage (home), Bayview Bank, The Palms hotel, Solmar General hospital,
-// the Neon Mile clubs and the Marina. The east edge is sand, then open water.
+// The city of Solmar: a sun-soaked coastal grid laid out once from a seed.
+// Avenues run north-south, streets east-west; the blocks between them hold
+// buildings, parks, parking lots and plazas. Landmarks are fixed by name so
+// missions can point at them: Reyes Garage (home), Bayview Bank, The Palms
+// hotel, Solmar General hospital, the Neon Mile clubs and the Marina. The
+// east edge is sand, then open water.
 
 import { AVENUES, BEACH_X, PALETTE, ROAD_W, SIDEWALK, STREETS, WATER_X, WORLD } from './config.js';
 
@@ -25,7 +26,7 @@ function blockRects() {
   return rects;
 }
 
-/** A building rect inset inside `block`, with a fake height for its 3D roof shadow. */
+/** A building rect inset inside `block`, with a fake height for its roof shadow. */
 function buildingIn(block, random, color, name) {
   const margin = 26;
   const w = random.range(block.w * 0.45, block.w - margin * 2);
@@ -65,7 +66,11 @@ export function buildCity(random) {
       parks.push({ x: block.x, y: block.y, w: block.w, h: block.h });
       const count = random.int(7, 12);
       for (let i = 0; i < count; i += 1) {
-        trees.push({ x: random.range(block.x + 20, block.x + block.w - 20), y: random.range(block.y + 20, block.y + block.h - 20), r: random.range(9, 15) });
+        trees.push({
+          x: random.range(block.x + 20, block.x + block.w - 20),
+          y: random.range(block.y + 20, block.y + block.h - 20),
+          r: random.range(9, 15),
+        });
       }
       continue;
     }

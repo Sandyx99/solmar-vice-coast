@@ -1,7 +1,8 @@
-// The story of Mara Reyes, wheelwoman of Solmar: five jobs that teach the city, then pay
-// for it. Each mission is a small state machine with a title, a briefing, a target point
-// (or a list of them), a timer, and a reward. The world asks the mission where the marker
-// goes and what counts as done; the mission never touches the renderer directly.
+// The story of Mara Reyes, wheelwoman of Solmar: five jobs that teach the
+// city, then pay for it. Each mission is a small state machine with a title, a
+// briefing, a target point (or a list of them), a timer, and a reward. The
+// world asks the mission where the marker goes and what counts as done; the
+// mission never touches the renderer directly.
 
 export const MISSIONS = [
   {
@@ -46,16 +47,18 @@ export const MISSIONS = [
 ];
 
 /**
- * A live mission: `index` into MISSIONS, `phase` ('go' | 'deliver' | 'done'), the current
- * waypoint, remaining time, and how many drops are left. `make` starts the next mission
- * from the city's landmarks; `update` is called by the world with what the player just did.
+ * A live mission: `index` into MISSIONS, `phase` ('go' | 'deliver' | 'done'),
+ * the current waypoint, remaining time, and how many drops are left. `make`
+ * starts the next mission from the city's landmarks; `update` is called by the
+ * world with what the player just did.
  */
 export function createMissionRunner(city) {
   const L = city.landmarks;
   let current = null;
 
-  // Waypoints are the landmarks' front doors (walkable, outside the walls) or points
-  // on a street — never a building's centre, where no car or pedestrian can stand.
+  // Waypoints are the landmarks' front doors (walkable, outside the walls) or
+  // points on a street — never a building's centre, where no car or pedestrian
+  // can stand.
   function waypointFor(mission, phase, dropIndex) {
     if (mission.id === 'first-wheels') return { x: L.garage.door.x, y: L.garage.door.y, label: 'REYES GARAGE' };
     if (mission.id === 'the-courier') {

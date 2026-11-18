@@ -1,161 +1,138 @@
-// Boot and the one loop: input is read every frame, the world advances in fixed 1/60 s
-// steps (several in a slow frame, none in a fast one), and the renderer paints what is
-// there. The game moves between four screens: title, play, paused and game over.
-//
-// ?seed=N fixes the city and the traffic. ?shot=start|play|chase|mission (with &seed=N)
-// stages that scene instead of running the loop, paints it twice and sets
-// window.__shotReady for a screenshot.
-import { STEP } from './config.js';
-import { createRandom } from './random.js';
-import { createWorld, EVENT_MISSION_DONE, EVENT_MISSION_FAIL, EVENT_OVER } from './world.js';
-import { ACTION_CONFIRM, ACTION_ENTER, ACTION_MUTE, ACTION_PAUSE, ACTION_PUNCH, createInput } from './input.js';
-import { createRenderer, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
+// SOLMAR — Vice Coast: entry point. Boots the world, owns the game loop and
+// the screen state machine (start / play / pause / wasted / busted), and runs
+// the screenshot poses when the page is asked to. The world does the
+// simulating; this file does the wiring.
+
+import { createRng } from './random.js';
+import { createWorld, EVENT_CASH, EVENT_MISSION_DONE, EVENT_MISSION_FAIL, EVENT_OVER } from './world.js';
+import { createRenderer } from './render.js';
+import { createInput, ACTION_CONFIRM, ACTION_ENTER, ACTION_MUTE, ACTION_PAUSE, ACTION_PUNCH } from './input.js';
 import { createAudio } from './audio.js';
-import { stageShot } from './shots.js';
-
-/** The longest frame the loop catches up on; a longer stall (a hidden tab) is dropped, not replayed. */
-const MAX_FRAME = 0.25;
-
-const params = new URLSearchParams(window.location.search);
-const shot = params.get('shot');
-const seedParam = Number.parseInt(params.get('seed') ?? '', 10);
-const seed = Number.isInteger(seedParam) ? seedParam : Math.floor(Math.random() * 4294967296);
+import { runPose, poseNames } from './shots.js';
 
 const canvas = document.getElementById('game');
-const status = document.getElementById('status');
-const world = createWorld(createRandom(seed), seed);
+const rng = createRng(20261118);
+const world = createWorld(rng, 20261118);
 const renderer = createRenderer(canvas);
+const input = createInput(canvas);
 const audio = createAudio();
+// The world plays its own sound effects (gunfire, crashes, pickups, the
+// mission jingle) and the engine hum through this audio object.
 world.state.audio = audio;
 
-function runShot(name) {
-  const scene = stageShot(name, world);
-  let painted = 0;
-  function paint() {
-    renderer.draw(world.state, scene.screen);
-    painted += 1;
-    if (painted < 2) requestAnimationFrame(paint);
-    else window.__shotReady = true;
-  }
-  requestAnimationFrame(paint);
-}
+let screen = 'start';
+let lastTime = 0;
+let overTimer = 0;
 
-function runGame() {
-  const input = createInput(canvas);
-  let screen = SCREEN_TITLE;
-  let accumulator = 0;
-  let last = performance.now();
-
-  // The first gesture unlocks sound; the music starts with the first job.
-  function unlockSound() {
-    audio.unlock();
-    audio.startMusic();
-  }
-  window.addEventListener('pointerdown', unlockSound, { once: true });
-  window.addEventListener('keydown', unlockSound, { once: true });
-
-  // Screen readers (and anyone watching the page's text) hear the screen changes.
-  function announce(message) {
-    status.textContent = message;
-  }
-
-  function startGame() {
-    world.reset();
-    world.state.audio = audio;
-    accumulator = 0;
-    screen = SCREEN_PLAY;
-    announce('Playing. Mara Reyes, Solmar. Follow the gold marker.');
-  }
-
-  function endGame() {
-    screen = SCREEN_OVER;
-    audio.wasted();
-    announce(world.state.over === 'busted' ? 'Busted. Press Enter to get back out there.' : 'Wasted. Press Enter to get back out there.');
-  }
-
-  // One-shot presses, taken once per frame and shared by the screen logic and the step.
-  let pendingEnter = false;
-  let pendingPunch = false;
-
-  function handleActions() {
-    const actions = input.takeActions();
-    if (actions & ACTION_MUTE) {
-      const muted = audio.toggleMute();
-      announce(muted ? 'Muted.' : 'Sound on.');
-    }
-    if (actions & ACTION_ENTER) pendingEnter = true;
-    if (actions & ACTION_PUNCH) pendingPunch = true;
-    if (actions & ACTION_CONFIRM && (screen === SCREEN_TITLE || screen === SCREEN_OVER)) {
-      if (screen === SCREEN_OVER) world.respawn();
-      startGame();
-    } else if (actions & ACTION_PAUSE && screen === SCREEN_PLAY) {
-      screen = SCREEN_PAUSED;
-      announce('Paused.');
-    } else if (actions & (ACTION_PAUSE | ACTION_CONFIRM) && screen === SCREEN_PAUSED) {
-      screen = SCREEN_PLAY;
-      announce('Playing.');
-    }
-  }
-
-  function controls() {
-    const move = input.move();
-    const mouse = input.mouse();
-    const taken = { enter: pendingEnter, punch: pendingPunch };
-    pendingEnter = false;
-    pendingPunch = false;
-    return {
-      move,
-      sprint: input.sprint(),
-      brake: input.brake(),
-      aim: renderer.mouseToWorld(mouse.x, mouse.y),
-      firing: mouse.down,
-      enter: taken.enter,
-      punch: taken.punch,
-    };
-  }
-
-  function step() {
-    if (screen === SCREEN_TITLE) {
-      if (!world.state.over) {
-        world.step(STEP, { move: { x: 0, y: 0 }, sprint: false, brake: false, enter: false, punch: false, firing: false, aim: null });
-      }
-      return;
-    }
-    const events = world.step(STEP, controls());
-    if (events & EVENT_OVER) endGame();
-    else if (events & EVENT_MISSION_DONE) announce('Job done.');
-    else if (events & EVENT_MISSION_FAIL) announce('Job failed.');
-  }
-
-  function frame(now) {
-    requestAnimationFrame(frame);
-    accumulator += Math.min((now - last) / 1000, MAX_FRAME);
-    last = now;
-    handleActions();
-    if (screen === SCREEN_TITLE || screen === SCREEN_PLAY) {
-      while (accumulator >= STEP && (screen === SCREEN_TITLE || screen === SCREEN_PLAY)) {
-        step();
-        accumulator -= STEP;
-      }
-    } else {
-      accumulator = 0;
-    }
-    renderer.draw(world.state, screen);
-  }
-
-  // Leaving the tab pauses a running game rather than letting the cops close in unseen.
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && screen === SCREEN_PLAY) {
-      screen = SCREEN_PAUSED;
-      announce('Paused.');
-    }
-  });
-
+function startGame() {
+  audio.unlock();
+  audio.startMusic();
   world.reset();
-  world.state.audio = audio;
-  announce('Solmar, Vice Coast. Press Enter to start.');
-  requestAnimationFrame(frame);
+  screen = 'play';
 }
 
-if (shot) runShot(shot);
-else runGame();
+function applyEvents(events) {
+  if (events & EVENT_OVER) {
+    screen = world.state.over === 'busted' ? 'busted' : 'wasted';
+    overTimer = 0;
+    audio.stopMusic();
+    if (screen === 'busted') audio.fail();
+    else audio.wasted();
+  } else if (events & EVENT_MISSION_DONE) {
+    audio.mission();
+  } else if (events & EVENT_MISSION_FAIL) {
+    audio.fail();
+  } else if (events & EVENT_CASH) {
+    audio.cash();
+  }
+}
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (now - lastTime) / 1000 || 0.016);
+  lastTime = now;
+  const actions = input.takeActions();
+  const mouse = input.mouse();
+
+  if (actions & ACTION_MUTE) {
+    audio.unlock();
+    const muted = audio.toggleMute();
+    world.say(muted ? 'Sound off' : 'Sound on', 1.5);
+  }
+
+  if (screen === 'start') {
+    if (actions & ACTION_CONFIRM) startGame();
+    renderer.draw(world, 'start', now / 1000);
+    return;
+  }
+  if (screen === 'pause') {
+    if (actions & ACTION_PAUSE) {
+      screen = 'play';
+      audio.unlock();
+    }
+    if (actions & ACTION_CONFIRM) startGame();
+    renderer.draw(world, 'pause', now / 1000);
+    return;
+  }
+  if (screen === 'wasted' || screen === 'busted') {
+    overTimer += dt;
+    if ((actions & ACTION_CONFIRM) && overTimer > 0.8) {
+      world.respawn();
+      audio.unlock();
+      audio.startMusic();
+      screen = 'play';
+    }
+    renderer.draw(world, screen, now / 1000);
+    return;
+  }
+
+  if (actions & ACTION_PAUSE) {
+    screen = 'pause';
+    renderer.draw(world, 'pause', now / 1000);
+    return;
+  }
+
+  const st = world.state;
+  const mouseWorld = renderer.screenToWorld(mouse.x, mouse.y);
+  const controls = {
+    move: input.move(),
+    sprint: input.sprint(),
+    brake: input.brake(),
+    aim: mouseWorld,
+    firing: mouse.down,
+    punch: Boolean(actions & ACTION_PUNCH),
+    enter: Boolean(actions & ACTION_ENTER),
+  };
+  const events = world.step(dt, controls);
+  applyEvents(events);
+  renderer.draw(world, 'play', now / 1000);
+}
+
+// Screenshot poses, for the entry's four shots: the page is opened with
+// ?shot=<name>, the pose runs, and window.__shotReady flips true when the
+// frame is ready to capture.
+function runShotPose() {
+  const params = new URLSearchParams(window.location.search);
+  const shot = params.get('shot');
+  if (!shot) return false;
+  audio.unlock();
+  const pose = runPose(world, shot);
+  let frames = 0;
+  const stepMs = 1000 / 60;
+  const interval = setInterval(() => {
+    const events = world.step(stepMs / 1000, pose.controls());
+    applyEvents(events);
+    frames += 1;
+    renderer.draw(world, 'play', frames / 60);
+    if (frames >= pose.frames) {
+      clearInterval(interval);
+      renderer.draw(world, 'play', frames / 60);
+      window.__shotReady = true;
+    }
+  }, stepMs);
+  return true;
+}
+
+world.reset();
+window.__solmar = { world, renderer, input, audio, poseNames: poseNames() };
+if (!runShotPose()) requestAnimationFrame(frame);

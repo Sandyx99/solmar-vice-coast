@@ -1,16 +1,18 @@
-// A small seeded random source: one 32-bit state, a xorshift step, and the helpers the
-// city builder and the world use. Same seed, same city, same traffic — so a screenshot
-// staged with ?seed=1 always frames the same streets.
+// A small seeded random source: one 32-bit state, a xorshift step, and the
+// helpers the city builder and the world use. Same seed, same city, same
+// traffic — so a screenshot staged with ?seed=1 always frames the same streets.
 
-export function createRandom(seed) {
+export function createRng(seed) {
   let state = (seed >>> 0) || 0x9e3779b9;
+
   function next() {
-    // xorshift32: three shifts, one multiply-free step, full-period for nonzero state.
+    // xorshift32: three shifts, no multiply, full period for nonzero state.
     state ^= state << 13;
     state ^= state >>> 17;
     state ^= state << 5;
     return (state >>> 0) / 4294967296;
   }
+
   return {
     /** A float in [0, 1). */
     next,

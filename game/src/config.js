@@ -1,19 +1,20 @@
-// SOLMAR — tuning numbers, colours and save keys in one place. The world is a fixed-size
-// city (WORLD.w by WORLD.h world units); the renderer scales the view to the window, so no
-// rule below depends on the screen size.
+// SOLMAR — Vice Coast. Every tuning number lives here, so the rest of the
+// game never hard-codes a speed, a colour or a city coordinate. The world is
+// a fixed 3600 x 2600 city; the renderer scales the camera to the window, so
+// nothing below depends on the screen size.
 
 export const STEP = 1 / 60;
 
 export const WORLD = { w: 3600, h: 2600 };
 
-// Road centrelines: avenues run north-south, streets east-west. ROAD_W is the asphalt width;
-// sidewalks sit on both sides of every road.
+// Roads: avenues run north-south, streets east-west. ROAD_W is the asphalt
+// width, and a sidewalk band runs along both sides of every road.
 export const ROAD_W = 96;
 export const SIDEWALK = 26;
 export const AVENUES = [360, 810, 1260, 1710, 2160, 2610, 3060];
 export const STREETS = [360, 810, 1260, 1710, 2160];
 
-// East edge: sand then open water. Everything west of BEACH_X is drivable city.
+// The east edge: sand, then open water. Everything west of BEACH_X is city.
 export const BEACH_X = 3300;
 export const WATER_X = 3480;
 
@@ -32,7 +33,7 @@ export const PLAYER = {
 };
 
 export const CAR = {
-  // Per body type: length, width, top speed, acceleration, grip (steering strength).
+  // Per body type: length, width, top speed, acceleration, steering grip.
   types: {
     sedan: { len: 58, wid: 28, top: 520, accel: 300, grip: 2.6, color: '#d8b13c' },
     taxi: { len: 58, wid: 28, top: 500, accel: 290, grip: 2.6, color: '#f2c230' },
@@ -57,11 +58,11 @@ export const WANTED = {
   shoot: 10,
   killPed: 20,
   killCop: 26,
-  // Heat above these lines shows that many stars.
+  // Heat at or above each line shows that many stars.
   lines: [10, 26, 46, 66, 86],
   decayPerSec: 1.6,
   decayDelay: 5,
-  // How many police cars / foot cops chase at each star level (index = stars).
+  // Police cars / foot cops chasing at each star level (index = stars).
   cars: [0, 1, 2, 3, 4, 5],
   cops: [0, 0, 2, 3, 4, 5],
 };
@@ -86,6 +87,9 @@ export const PALETTE = {
   waterDeep: '#1f7fa8',
   asphalt: '#3a3f4a',
   asphaltDark: '#333743',
+  road: '#3a3f4a',
+  dash: '#e8d44d',
+  lot: '#9a948a',
   lane: '#e8d44d',
   sidewalk: '#b9b3a4',
   curb: '#8f887a',

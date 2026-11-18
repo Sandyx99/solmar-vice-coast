@@ -1,7 +1,7 @@
-// Cars: one physics model for the player's car, traffic and police. A car has a heading,
-// a speed along it, and a body type from config; traffic follows road centrelines and turns
-// at intersections, police cars chase a target with the same steering, and parked cars sit
-// in lots and along kerbs waiting to be stolen.
+// Cars: one physics model for the player's car, traffic and police. A car has a
+// heading, a speed along it, and a body type from config; traffic follows road
+// centrelines and turns at intersections, police cars chase a target with the
+// same steering, and parked cars sit in lots and along kerbs waiting to be stolen.
 
 import { CAR, ROAD_W, TRAFFIC, WORLD } from './config.js';
 
@@ -97,8 +97,8 @@ export function moveCar(city, car, dt) {
 }
 
 /**
- * Drive the player's car: `throttle` -1..1 (reverse to forward), `steer` -1..1, `brake`
- * for the handbrake. Steering bites harder the faster the car goes, up to a point.
+ * Drive the player's car: `throttle` -1..1 (reverse to forward), `steer` -1..1,
+ * `brake` for the handbrake. Steering bites harder the faster the car goes.
  */
 export function drivePlayerCar(city, car, throttle, steer, brake, dt) {
   const def = car.def;
@@ -138,7 +138,7 @@ export function driveTrafficCar(city, car, cars, random, dt) {
   // The lane it drives: the road's centreline, offset to the right-hand side.
   const laneOff = (ROAD_W / 2 - 16) * (car.road.dir > 0 ? 1 : -1);
   const baseAngle = car.road.horizontal ? (car.road.dir > 0 ? 0 : Math.PI) : (car.road.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
-  const lanePos = car.road.horizontal ? car.road.line + laneOff : car.road.line + laneOff;
+  const lanePos = car.road.line + laneOff;
   const off = car.road.horizontal ? car.y - lanePos : car.x - lanePos;
   const steerTo = baseAngle - Math.max(-0.5, Math.min(0.5, off * 0.012));
   car.angle += Math.max(-2.4 * dt, Math.min(2.4 * dt, wrapAngle(steerTo - car.angle)));
@@ -154,11 +154,12 @@ export function driveTrafficCar(city, car, cars, random, dt) {
 }
 
 /**
- * Police pursuit: close fast, then hold a standoff ring and circle the target instead of
- * grinding into it — a pile of interceptors should surround the player, not pin them
- * against a wall forever. When the target is inside a block (a garage forecourt, a
- * parking lot), the car holds on the nearest road and waits there: interceptors do not
- * drive through buildings. The siren wails the whole time.
+ * Police pursuit: close fast, then hold a standoff ring and circle the target
+ * instead of grinding into it — a pile of interceptors should surround the
+ * player, not pin them against a wall forever. When the target is inside a
+ * block (a garage forecourt, a parking lot), the car holds on the nearest road
+ * and waits there: interceptors do not drive through buildings. The siren wails
+ * the whole time.
  */
 export function drivePoliceCar(city, car, target, dt) {
   const dist = Math.hypot(target.x - car.x, target.y - car.y);
@@ -192,9 +193,9 @@ export function drivePoliceCar(city, car, target, dt) {
 }
 
 /**
- * Push two overlapping cars apart and trade a little speed: a cheap fender-bender. A
- * driven car is the heavier one — the other car takes most of the shove, so a traffic
- * car cannot pin the player's car in place by leaning on it.
+ * Push two overlapping cars apart and trade a little speed: a cheap fender-bender.
+ * A driven car is the heavier one — the other car takes most of the shove, so a
+ * traffic car cannot pin the player's car in place by leaning on it.
  */
 export function resolveCarCrash(a, b) {
   const dx = b.x - a.x;

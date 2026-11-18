@@ -1,7 +1,8 @@
-// All sound is synthesized with WebAudio — no audio files, no network. An engine hum
-// follows the car's speed, a two-tone siren follows the nearest police car, gunshots and
-// crashes are filtered noise bursts, and a small bass-and-hat loop keeps the Neon Mile
-// feeling like a night out. Everything is created lazily on the first user gesture.
+// All sound is synthesized with WebAudio — no audio files, no network. An
+// engine hum follows the car's speed, a two-tone siren follows the nearest
+// police car, gunshots and crashes are filtered noise bursts, and a small
+// bass-and-hat loop keeps the Neon Mile feeling like a night out. Everything
+// is created lazily on the first user gesture.
 
 const MUSIC_BASS = [55, 0, 65.41, 0, 49, 0, 58.27, 0, 55, 0, 65.41, 0, 73.42, 65.41, 58.27, 49];
 

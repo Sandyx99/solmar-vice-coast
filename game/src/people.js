@@ -1,11 +1,15 @@
-// The people of Solmar: pedestrians strolling the sidewalks, foot police who chase and
-// arrest, and the bank's guards. Pedestrians pick a sidewalk point and walk to it, and
-// scatter when they hear gunfire or see a car coming at them. Cops run at the player and
-// try to hold them for an arrest; guards hold a post and shoot at armed robbers.
+// The people of Solmar: pedestrians strolling the sidewalks, foot police who
+// chase and arrest, and the bank's guards. Pedestrians pick a sidewalk point
+// and walk to it, and scatter when they hear gunfire or see a car coming at
+// them. Cops run at the player and try to hold them for an arrest; guards hold
+// a post and shoot at armed robbers.
 
 import { PEDS, POLICE } from './config.js';
 
 let nextId = 1;
+
+const SHIRTS = ['#e2622b', '#3e7cb1', '#9b59b6', '#27ae60', '#f39c12', '#e74c3c', '#16a085', '#d35400'];
+const SKINS = ['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac'];
 
 export function makePed(city, random) {
   const p = city.randomSidewalkPoint();
@@ -16,8 +20,8 @@ export function makePed(city, random) {
     angle: random.range(0, Math.PI * 2),
     speed: random.range(PEDS.walkMin, PEDS.walkMax),
     target: city.randomSidewalkPoint(),
-    shirt: random.pick(['#e2622b', '#3e7cb1', '#9b59b6', '#27ae60', '#f39c12', '#e74c3c', '#16a085', '#d35400']),
-    skin: random.pick(['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac']),
+    shirt: random.pick(SHIRTS),
+    skin: random.pick(SKINS),
     health: 100,
     fleeing: 0,
     dead: false,
@@ -85,9 +89,9 @@ function stepToward(city, person, tx, ty, dt) {
 }
 
 /**
- * Advance one person one step. `danger` is {x, y} when gunfire or a speeding car is near
- * (pedestrians flee from it); `player` is the player state for cops and guards.
- * Returns 'arrest' when a cop has held the player long enough, else null.
+ * Advance one person one step. `danger` is {x, y} when gunfire or a speeding car
+ * is near (pedestrians flee from it); `player` is the player state for cops and
+ * guards. Returns 'arrest' when a cop has held the player long enough, else null.
  */
 export function stepPerson(city, person, random, dt, danger, player) {
   if (person.dead) {

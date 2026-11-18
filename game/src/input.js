@@ -1,7 +1,8 @@
-// Keyboard and pointer input. Held keys give a move/steer vector every frame; one-shot
-// presses (confirm, pause, enter car, punch, mute) are queued as bit flags and taken once by
-// the loop, so a press between two frames is never lost and never counted twice. The mouse
-// position is kept in screen pixels and turned into a world aim point by the renderer.
+// Keyboard and pointer input. Held keys give a move/steer vector every frame;
+// one-shot presses (confirm, pause, enter car, punch, mute) are queued as bit
+// flags and taken once by the loop, so a press between two frames is never lost
+// and never counted twice. The mouse position is kept in screen pixels and
+// turned into a world aim point by the renderer.
 
 export const ACTION_CONFIRM = 1;
 export const ACTION_PAUSE = 2;
@@ -48,7 +49,8 @@ export function createInput(target) {
   window.addEventListener('keyup', (event) => {
     held.delete(event.code);
   });
-  // A key released while the tab is hidden never sends keyup: let go of everything on blur.
+  // A key released while the tab is hidden never sends keyup: let go of
+  // everything on blur.
   window.addEventListener('blur', () => {
     held.clear();
     mouse.down = false;

@@ -1,9 +1,10 @@
-// The simulation: one fixed-step update of everything in Solmar. The player walks or
-// drives, traffic and pedestrians live their own lives, the police respond to the wanted
-// level, bullets and particles fly, and the story mission advances. The loop in main.js
-// calls step() with the current controls; shots.js calls it with an autopilot's controls.
+// The simulation: one fixed-step update of everything in Solmar. The player
+// walks or drives, traffic and pedestrians live their own lives, the police
+// respond to the wanted level, bullets and particles fly, and the story mission
+// advances. The loop in main.js calls step() with the current controls;
+// shots.js calls it with an autopilot's controls.
 
-import { CAR, MONEY, PEDS, PLAYER, POLICE, SAVE_KEY, TRAFFIC, WANTED, WORLD } from './config.js';
+import { CAR, MONEY, PEDS, PLAYER, POLICE, SAVE_KEY, TRAFFIC, WANTED } from './config.js';
 import { buildCity } from './city.js';
 import {
   drivePlayerCar, drivePoliceCar, driveTrafficCar, resolveCarCrash,
@@ -52,7 +53,10 @@ export function createWorld(random, seed) {
       const raw = window.localStorage.getItem(SAVE_KEY);
       if (!raw) return { money: MONEY.start, missionsDone: 0 };
       const parsed = JSON.parse(raw);
-      return { money: typeof parsed.money === 'number' ? parsed.money : MONEY.start, missionsDone: parsed.missionsDone | 0 };
+      return {
+        money: typeof parsed.money === 'number' ? parsed.money : MONEY.start,
+        missionsDone: parsed.missionsDone | 0,
+      };
     } catch {
       return { money: MONEY.start, missionsDone: 0 };
     }
@@ -60,7 +64,9 @@ export function createWorld(random, seed) {
 
   function writeSave() {
     try {
-      window.localStorage.setItem(SAVE_KEY, JSON.stringify({ money: state.player.money, missionsDone: state.missionsDone }));
+      window.localStorage.setItem(SAVE_KEY, JSON.stringify({
+        money: state.player.money, missionsDone: state.missionsDone,
+      }));
     } catch {
       // Storage can be off: the save then lasts this visit only.
     }
@@ -78,7 +84,9 @@ export function createWorld(random, seed) {
 
   function starsFor(heat) {
     let stars = 0;
-    for (let i = 0; i < WANTED.lines.length; i += 1) if (heat >= WANTED.lines[i]) stars = i + 1;
+    for (let i = 0; i < WANTED.lines.length; i += 1) {
+      if (heat >= WANTED.lines[i]) stars = i + 1;
+    }
     return stars;
   }
 
@@ -86,7 +94,11 @@ export function createWorld(random, seed) {
     for (let i = 0; i < count; i += 1) {
       const a = random.range(0, Math.PI * 2);
       const s = random.range(speed * 0.3, speed);
-      state.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: random.range(0.25, 0.6), max: 0.6, color, size: random.range(2, 5) });
+      state.particles.push({
+        x, y,
+        vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+        life: random.range(0.25, 0.6), max: 0.6, color, size: random.range(2, 5),
+      });
     }
   }
 
@@ -112,8 +124,8 @@ export function createWorld(random, seed) {
     state.toastUntil = 0;
     state.stats = { earned: 0, stolen: 0, arrests: 0 };
     const g = state.city.landmarks.garage;
-    // Spawn on the grass south of the garage door, clear of the job-1 waypoint: Mara
-    // starts at home, but she still has to go and find wheels.
+    // Spawn on the grass south of the garage door, clear of the job-1 waypoint:
+    // Mara starts at home, but she still has to go and find wheels.
     state.player = {
       x: g.door.x, y: g.door.y + 140,
       angle: -Math.PI / 2,
@@ -156,7 +168,9 @@ export function createWorld(random, seed) {
     }
     state.mission = state.missionRunner.start(state.missionsDone);
     if (state.mission) {
-      if (state.mission.mission.setWanted) addHeat(WANTED.lines[state.mission.mission.setWanted - 1] + 2);
+      if (state.mission.mission.setWanted) {
+        addHeat(WANTED.lines[state.mission.mission.setWanted - 1] + 2);
+      }
       say(`${state.mission.mission.title} — ${state.mission.mission.brief}`, 6);
     }
   }
@@ -464,7 +478,10 @@ export function createWorld(random, seed) {
     }
 
     // --- People ---------------------------------------------------------------
-    const danger = state.bullets.length > 0 ? { x: p.x, y: p.y } : null;
+    // Pedestrians scatter from gunfire — and from a car bearing down on them:
+    // a speeding player car is a danger too, not just bullets.
+    const speeding = p.inCar && Math.abs(p.speed) > 200;
+    const danger = state.bullets.length > 0 || speeding ? { x: p.x, y: p.y } : null;
     for (const person of state.people) {
       const result = stepPerson(city, person, random, dt, danger, p);
       if (result === 'arrest') {
@@ -514,7 +531,9 @@ export function createWorld(random, seed) {
             person.dead = true;
             person.fade = 0;
             addHeat(person.kind === 'cop' || person.kind === 'guard' ? WANTED.killCop : WANTED.killPed);
-            if (person.kind === 'ped' && random.chance(0.35)) dropPickup(person.x, person.y, 'cash', random.int(20, 80));
+            if (person.kind === 'ped' && random.chance(0.35)) {
+              dropPickup(person.x, person.y, 'cash', random.int(20, 80));
+            }
           }
           break;
         }
@@ -560,8 +579,8 @@ export function createWorld(random, seed) {
           events |= completeMission();
         }
       } else if (m.mission.id === 'first-wheels' && !p.inCar) {
-        // Job 1 needs wheels: standing at the garage on foot does not count. The player
-        // spawns right here, so this check is what keeps the job honest.
+        // Job 1 needs wheels: standing at the garage on foot does not count. The
+        // player spawns right here, so this check is what keeps the job honest.
         if (dist < 110 && state.time - (m.hintAt ?? -99) > 4) {
           m.hintAt = state.time;
           say('You need wheels — jack a car with E and bring it here.', 3);
