@@ -1,36 +1,35 @@
-// A small seeded random source: one 32-bit state, a xorshift step, and the
-// helpers the city builder and the world use. Same seed, same city, same
-// traffic — so a screenshot staged with ?seed=1 always frames the same streets.
+// A small seeded random source (splitmix32): the same seed gives the same
+// stream, which is what makes traffic, pedestrians and the screenshot scenes
+// repeatable. Nothing here touches the browser or the game state.
 
-export function createRng(seed) {
-  let state = (seed >>> 0) || 0x9e3779b9;
-
-  function next() {
-    // xorshift32: three shifts, no multiply, full period for nonzero state.
-    state ^= state << 13;
-    state ^= state >>> 17;
-    state ^= state << 5;
-    return (state >>> 0) / 4294967296;
-  }
-
-  return {
-    /** A float in [0, 1). */
-    next,
-    /** A float in [min, max). */
-    range(min, max) {
-      return min + next() * (max - min);
-    },
-    /** An integer in [min, max] (both ends included). */
-    int(min, max) {
-      return min + Math.floor(next() * (max - min + 1));
-    },
-    /** One element of `items`, uniformly. */
-    pick(items) {
-      return items[Math.floor(next() * items.length)];
-    },
-    /** True with probability `p`. */
-    chance(p) {
-      return next() < p;
-    },
+export function createRandom(seed) {
+  let state = (seed >>> 0) || 1;
+  return function random() {
+    state = (state + 0x9e3779b9) >>> 0;
+    let z = state;
+    z = Math.imul(z ^ (z >>> 16), 0x21f0aaad);
+    z = Math.imul(z ^ (z >>> 15), 0x735a2d97);
+    z = (z ^ (z >>> 15)) >>> 0;
+    return z / 4294967296;
   };
+}
+
+/** A random element of `list`. */
+export function pick(random, list) {
+  return list[Math.floor(random() * list.length)];
+}
+
+/** A random number from `min` (inclusive) to `max` (exclusive). */
+export function range(random, min, max) {
+  return min + random() * (max - min);
+}
+
+/** A random whole number from `min` to `max` inclusive. */
+export function int(random, min, max) {
+  return min + Math.floor(random() * (max - min + 1));
+}
+
+/** A random angle in radians, 0 to a full turn. */
+export function angle(random) {
+  return random() * Math.PI * 2;
 }

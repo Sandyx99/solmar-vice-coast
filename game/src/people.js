@@ -1,164 +1,121 @@
-// The people of Solmar: pedestrians strolling the sidewalks, foot police who
-// chase and arrest, and the bank's guards. Pedestrians pick a sidewalk point
-// and walk to it, and scatter when they hear gunfire or see a car coming at
-// them. Cops run at the player and try to hold them for an arrest; guards hold
-// a post and shoot at armed robbers.
+// The people on foot: pedestrians who walk the pavements and run from
+// trouble, and the police officers who chase the player down and try to
+// arrest them. Nothing here draws or listens.
 
-import { PEDS, POLICE } from './config.js';
+import { PED, POLICE } from './config.js';
+import { clampWorld, hitBuilding, nearestRoadPoint, onRoad, pushOutOfBuildings } from './city.js';
+import { pick, range } from './random.js';
 
-let nextId = 1;
+const SHIRTS = ['#e06a6a', '#6aa8e0', '#7ed07e', '#e0c06a', '#b07ee0', '#e08ab0'];
 
-const SHIRTS = ['#e2622b', '#3e7cb1', '#9b59b6', '#27ae60', '#f39c12', '#e74c3c', '#16a085', '#d35400'];
-const SKINS = ['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac'];
-
-export function makePed(city, random) {
-  const p = city.randomSidewalkPoint();
+/** A pedestrian at (x, y), walking the pavement in a random direction. */
+export function createPed(x, y, random) {
   return {
-    id: nextId += 1,
-    kind: 'ped',
-    x: p.x, y: p.y,
-    angle: random.range(0, Math.PI * 2),
-    speed: random.range(PEDS.walkMin, PEDS.walkMax),
-    target: city.randomSidewalkPoint(),
-    shirt: random.pick(SHIRTS),
-    skin: random.pick(SKINS),
-    health: 100,
-    fleeing: 0,
-    dead: false,
-    fade: 0,
-  };
-}
-
-export function makeCop(city, random, near) {
-  const p = city.randomSidewalkPoint();
-  // Spawn on a sidewalk not too far from the trouble.
-  const dx = p.x - near.x;
-  const dy = p.y - near.y;
-  const dist = Math.hypot(dx, dy) || 1;
-  const spawn = dist > 500 ? { x: near.x + (dx / dist) * 420, y: near.y + (dy / dist) * 420 } : p;
-  return {
-    id: nextId += 1,
-    kind: 'cop',
-    x: spawn.x, y: spawn.y,
-    angle: 0,
-    speed: POLICE.footSpeed,
-    target: null,
-    shirt: '#2b6cb0',
-    skin: '#f1c27d',
-    health: 100,
-    fleeing: 0,
-    dead: false,
-    fade: 0,
-    arrest: 0,
-    shootIn: random.range(0.4, 1),
-  };
-}
-
-export function makeGuard(city, random, x, y) {
-  return {
-    id: nextId += 1,
-    kind: 'guard',
     x, y,
-    angle: random.range(0, Math.PI * 2),
-    speed: 150,
-    target: null,
-    post: { x, y },
-    shirt: '#3d4451',
-    skin: '#e0ac69',
-    health: 100,
-    fleeing: 0,
+    angle: range(random, 0, Math.PI * 2),
+    speed: range(random, PED.walkMin, PED.walkMax),
+    state: 'walk',
+    shirt: pick(random, SHIRTS),
+    turnTimer: range(random, 2, 7),
+    panic: 0,
     dead: false,
-    fade: 0,
-    arrest: 0,
-    shootIn: random.range(0.3, 0.8),
   };
 }
 
-function stepToward(city, person, tx, ty, dt) {
-  const dx = tx - person.x;
-  const dy = ty - person.y;
-  const dist = Math.hypot(dx, dy);
-  if (dist < 4) return true;
-  const want = Math.atan2(dy, dx);
-  person.angle = want;
-  const nx = person.x + Math.cos(want) * person.speed * dt;
-  const ny = person.y + Math.sin(want) * person.speed * dt;
-  if (!city.isBlocked(nx, person.y, 10)) person.x = nx;
-  if (!city.isBlocked(person.x, ny, 10)) person.y = ny;
-  return false;
+/** A pedestrian on a random pavement, clear of the player. */
+export function createPedNear(random, clearX, clearY) {
+  for (let tries = 0; tries < 20; tries += 1) {
+    const spot = nearestRoadPoint(range(random, 0, 3600), range(random, 0, 2600));
+    const side = random() < 0.5 ? -1 : 1;
+    const x = spot.axis === 'avenue' ? spot.x + side * 62 : spot.x + range(random, -300, 300);
+    const y = spot.axis === 'avenue' ? spot.y + range(random, -300, 300) : spot.y + side * 62;
+    if (Math.hypot(x - clearX, y - clearY) < 260) continue;
+    if (hitBuilding(x, y, PED.radius + 2) !== null) continue;
+    return createPed(x, y, random);
+  }
+  return createPed(clearX + 400, clearY, random);
 }
 
 /**
- * Advance one person one step. `danger` is {x, y} when gunfire or a speeding car
- * is near (pedestrians flee from it); `player` is the player state for cops and
- * guards. Returns 'arrest' when a cop has held the player long enough, else null.
+ * One pedestrian step. Walkers drift along the pavement and change direction
+ * at random; a panicked one runs away from the scare point and calms down
+ * once it is far from trouble.
  */
-export function stepPerson(city, person, random, dt, danger, player) {
-  if (person.dead) {
-    person.fade += dt;
-    return null;
-  }
-  if (person.kind === 'ped') {
-    if (danger && person.fleeing <= 0) {
-      const d = Math.hypot(person.x - danger.x, person.y - danger.y);
-      if (d < 260) {
-        person.fleeing = random.range(2, 4);
-        const away = Math.atan2(person.y - danger.y, person.x - danger.x);
-        person.target = { x: person.x + Math.cos(away) * 320, y: person.y + Math.sin(away) * 320 };
-      }
-    }
-    if (person.fleeing > 0) {
-      person.fleeing -= dt;
-      person.speed = 170;
-    } else {
-      person.speed = random.range(PEDS.walkMin, PEDS.walkMax) * 0.6 + 20;
-    }
-    if (stepToward(city, person, person.target.x, person.target.y, dt)) {
-      person.target = city.randomSidewalkPoint();
-      person.fleeing = 0;
-    }
-    return null;
-  }
-
-  // Cops and guards: run at the player.
-  const px = player.x;
-  const py = player.y;
-  const dist = Math.hypot(px - person.x, py - person.y);
-  if (person.kind === 'cop') {
-    person.speed = POLICE.footSpeed;
-    stepToward(city, person, px, py, dt);
-    if (dist < POLICE.arrestRange && !player.inCar) {
-      person.arrest += dt;
-      if (person.arrest >= POLICE.arrestTime) return 'arrest';
-    } else {
-      person.arrest = Math.max(0, person.arrest - dt * 2);
-    }
-  } else {
-    // Guards hold near their post unless the player comes close, then they shoot.
-    if (dist < 420) {
-      person.angle = Math.atan2(py - person.y, px - person.x);
-      person.speed = 0;
-    } else {
-      stepToward(city, person, person.post.x, person.post.y, dt);
+export function updatePed(ped, dt, scare, random) {
+  if (ped.dead) return;
+  if (scare !== null) {
+    const dx = ped.x - scare.x;
+    const dy = ped.y - scare.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 320) {
+      ped.state = 'flee';
+      ped.panic = 3;
+      ped.angle = Math.atan2(dy, dx);
     }
   }
-  return null;
+  if (ped.panic > 0) {
+    ped.panic -= dt;
+    if (ped.panic <= 0) ped.state = 'walk';
+  }
+  const speed = ped.state === 'flee' ? PED.fleeSpeed : ped.speed;
+  ped.turnTimer -= dt;
+  if (ped.turnTimer <= 0) {
+    ped.turnTimer = range(random, 2, 7);
+    if (ped.state === 'walk') ped.angle = range(random, 0, Math.PI * 2);
+  }
+  let nx = ped.x + Math.cos(ped.angle) * speed * dt;
+  let ny = ped.y + Math.sin(ped.angle) * speed * dt;
+  if (hitBuilding(nx, ny, PED.radius) !== null || !onRoad(nx, ny)) {
+    ped.angle += Math.PI / 2;
+    nx = ped.x;
+    ny = ped.y;
+  }
+  const fixed = pushOutOfBuildings(nx, ny, PED.radius);
+  const clamped = clampWorld(fixed.x, fixed.y, PED.radius + 2);
+  ped.x = clamped.x;
+  ped.y = clamped.y;
 }
 
-/** A cop or guard fires at the player when in range and off cooldown; returns a bullet or null. */
-export function enemyShoot(person, player, dt, random) {
-  person.shootIn -= dt;
-  const dist = Math.hypot(player.x - person.x, player.y - person.y);
-  if (person.shootIn > 0 || dist > POLICE.shootRange || person.dead) return null;
-  person.shootIn = POLICE.shootCooldown * (person.kind === 'guard' ? 0.8 : 1.15);
-  const aim = Math.atan2(player.y - person.y, player.x - person.x) + random.range(-0.11, 0.11);
+/** A police officer on foot, dropped on the road near (x, y). */
+export function createCop(x, y) {
   return {
-    x: person.x + Math.cos(aim) * 18,
-    y: person.y + Math.sin(aim) * 18,
-    vx: Math.cos(aim) * 780,
-    vy: Math.sin(aim) * 780,
-    life: 0.7,
-    fromEnemy: true,
-    damage: POLICE.bulletDamage,
+    x, y,
+    angle: 0,
+    speed: POLICE.footSpeed,
+    arrest: 0,
+    shootTimer: 1,
+    health: 100,
+    dead: false,
   };
+}
+
+/**
+ * One officer step: run at the player, and once close, hold them for the
+ * arrest. Returns 'busted' when the arrest completes, 'shot' when the
+ * officer fires, otherwise null. `target` is the player's position.
+ */
+export function updateCop(cop, target, dt, random) {
+  if (cop.dead) return null;
+  const dx = target.x - cop.x;
+  const dy = target.y - cop.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  cop.angle = Math.atan2(dy, dx);
+  if (dist > POLICE.arrestRange) {
+    cop.x += (dx / dist) * cop.speed * dt;
+    cop.y += (dy / dist) * cop.speed * dt;
+    cop.arrest = Math.max(0, cop.arrest - dt * 2);
+  } else {
+    cop.arrest += dt;
+    if (cop.arrest >= POLICE.arrestTime) return 'busted';
+  }
+  const fixed = pushOutOfBuildings(cop.x, cop.y, PED.radius);
+  const clamped = clampWorld(fixed.x, fixed.y, PED.radius + 2);
+  cop.x = clamped.x;
+  cop.y = clamped.y;
+  cop.shootTimer -= dt;
+  if (dist < POLICE.shootRange && cop.shootTimer <= 0 && random() < 0.6) {
+    cop.shootTimer = POLICE.shootCooldown;
+    return 'shot';
+  }
+  return null;
 }

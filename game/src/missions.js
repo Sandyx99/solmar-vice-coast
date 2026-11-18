@@ -1,156 +1,166 @@
-// The story of Mara Reyes, wheelwoman of Solmar: five jobs that teach the
-// city, then pay for it. Each mission is a small state machine with a title, a
-// briefing, a target point (or a list of them), a timer, and a reward. The
-// world asks the mission where the marker goes and what counts as done; the
-// mission never touches the renderer directly.
+// Mara Reyes' five jobs: what each one asks, where it sends the player, and
+// how the world knows it is done. A mission is data plus a small check that
+// runs every step; the world owns the timer and the stage, this file owns the
+// meaning. Finishing one pays the reward and starts the next.
 
+import { LANDMARK_DOORS, landmark } from './city.js';
+import { REWARDS } from './config.js';
+
+/** The five jobs, in story order. */
 export const MISSIONS = [
   {
     id: 'first-wheels',
-    title: 'JOB 1 — FIRST WHEELS',
-    brief: 'Reyes needs wheels. Jack any parked car and bring it to the garage.',
-    reward: 200,
-    startAt: 'garage',
-    needsCar: true,
+    title: 'First Wheels',
+    brief: 'Mara Reyes: "New in Solmar? You need wheels. Take any car — it is yours now."',
+    objective: 'Steal a car',
+    marker: null,
+    reward: REWARDS[0],
   },
   {
-    id: 'the-courier',
-    title: 'JOB 2 — THE COURIER',
-    brief: 'Three drops, one clock. Deliver the packages around the Neon Mile before time runs out.',
-    reward: 350,
-    timer: 150,
-    drops: 3,
+    id: 'courier',
+    title: 'Courier',
+    brief: 'Mara Reyes: "Package for Palm Market. Drive it there, in a car, no questions."',
+    objective: 'Drive the package to Palm Market',
+    marker: 'Palm Market',
+    reward: REWARDS[1],
   },
   {
     id: 'heat-wave',
-    title: 'JOB 3 — HEAT WAVE',
-    brief: 'The Solmar PD is on you — three stars. Lose them: break line of sight and stay clean.',
-    reward: 400,
-    timer: 75,
-    setWanted: 3,
+    title: 'Heat Wave',
+    brief: 'Mara Reyes: "The heat is on you now. Lose the cops — the Garage is a good place to cool off."',
+    objective: 'Lose the wanted level',
+    marker: 'Reyes Garage',
+    reward: REWARDS[2],
   },
   {
     id: 'bayview-job',
-    title: 'JOB 4 — THE BAYVIEW JOB',
-    brief: 'Hit Bayview Bank, grab the cash bag, and get it back to Reyes Garage. The guards shoot back.',
-    reward: 800,
-    needsBag: true,
+    title: 'The Bayview Job',
+    brief: 'Mara Reyes: "Bayview Bank. Hold the door for four seconds, then bring it home to the Garage."',
+    objective: 'Rob Bayview Bank, then reach the Garage',
+    marker: 'Bayview Bank',
+    reward: REWARDS[3],
   },
   {
     id: 'kingpins-call',
-    title: 'JOB 5 — THE KINGPIN\u2019S CALL',
-    brief: 'One last run: pick up the case at the Marina and deliver it to The Palms. Five stars will follow.',
-    reward: 1500,
-    timer: 180,
-    setWanted: 2,
+    title: "The Kingpin's Call",
+    brief: 'Mara Reyes: "The Kingpin wants to meet. Marina, east side. Do not keep him waiting."',
+    objective: 'Reach the Marina',
+    marker: 'Marina',
+    reward: REWARDS[4],
   },
 ];
 
-/**
- * A live mission: `index` into MISSIONS, `phase` ('go' | 'deliver' | 'done'),
- * the current waypoint, remaining time, and how many drops are left. `make`
- * starts the next mission from the city's landmarks; `update` is called by the
- * world with what the player just did.
- */
-export function createMissionRunner(city) {
-  const L = city.landmarks;
-  let current = null;
+/** The mission the player is on, or null once the story is done. */
+export function currentMission(world) {
+  if (world.missionIndex >= MISSIONS.length) return null;
+  return MISSIONS[world.missionIndex];
+}
 
-  // Waypoints are the landmarks' front doors (walkable, outside the walls) or
-  // points on a street — never a building's centre, where no car or pedestrian
-  // can stand.
-  function waypointFor(mission, phase, dropIndex) {
-    if (mission.id === 'first-wheels') return { x: L.garage.door.x, y: L.garage.door.y, label: 'REYES GARAGE' };
-    if (mission.id === 'the-courier') {
-      const spots = [
-        { x: L.market.door.x, y: L.market.door.y, label: 'PALM MARKET' },
-        { x: 2160, y: 1260, label: 'NEON MILE — CLUB NOVA' },
-        { x: 1035, y: 1260, label: 'PALM COURT PARK' },
-      ];
-      return spots[dropIndex % spots.length];
-    }
-    if (mission.id === 'heat-wave') return { x: L.garage.door.x, y: L.garage.door.y, label: 'LAY LOW AT THE GARAGE' };
-    if (mission.id === 'bayview-job') {
-      return phase === 'go'
-        ? { x: L.bank.door.x, y: L.bank.door.y, label: 'BAYVIEW BANK' }
-        : { x: L.garage.door.x, y: L.garage.door.y, label: 'REYES GARAGE' };
-    }
-    if (mission.id === 'kingpins-call') {
-      return phase === 'go'
-        ? { x: L.marina.door.x, y: L.marina.door.y, label: 'SOLMAR MARINA' }
-        : { x: L.hotel.door.x, y: L.hotel.door.y, label: 'THE PALMS' };
-    }
-    return { x: L.garage.door.x, y: L.garage.door.y, label: 'REYES GARAGE' };
+/** Where the current job points on the map, or null when it points nowhere. */
+export function missionMarker(world) {
+  const mission = currentMission(world);
+  if (mission === null) return null;
+  if (mission.id === 'bayview-job' && world.missionStage === 1) {
+    const door = LANDMARK_DOORS['Reyes Garage'];
+    return { x: door.x, y: door.y, label: 'Reyes Garage' };
   }
+  if (mission.marker === null) return null;
+  const door = LANDMARK_DOORS[mission.marker];
+  return { x: door.x, y: door.y, label: mission.marker };
+}
 
-  return {
-    current,
-    start(index) {
-      const mission = MISSIONS[index];
-      if (!mission) return null;
-      current = {
-        index,
-        mission,
-        phase: 'go',
-        dropIndex: 0,
-        dropsLeft: mission.drops ?? 0,
-        timeLeft: mission.timer ?? 0,
-        hasBag: false,
-        waypoint: waypointFor(mission, 'go', 0),
-        failed: false,
-      };
-      return current;
-    },
-    /** Called when the player reaches the waypoint. Returns 'progress' | 'complete' | null. */
-    arrive() {
-      if (!current) return null;
-      const m = current.mission;
-      if (m.id === 'first-wheels') return 'complete';
-      if (m.id === 'the-courier') {
-        current.dropsLeft -= 1;
-        current.dropIndex += 1;
-        if (current.dropsLeft <= 0) return 'complete';
-        current.waypoint = waypointFor(m, 'go', current.dropIndex);
-        return 'progress';
-      }
-      if (m.id === 'heat-wave') return null; // Done by the timer, not by arriving.
-      if (m.id === 'bayview-job') {
-        if (current.phase === 'go') {
-          current.phase = 'deliver';
-          current.hasBag = true;
-          current.waypoint = waypointFor(m, 'deliver', 0);
-          return 'progress';
+/** The one-line objective the HUD shows for the current job. */
+export function missionObjective(world) {
+  const mission = currentMission(world);
+  if (mission === null) return 'Free roam — Solmar is yours';
+  if (mission.id === 'bayview-job' && world.missionStage === 1) {
+    return 'Bring it home to Reyes Garage';
+  }
+  return mission.objective;
+}
+
+/**
+ * Start a job: set its stage and timer, and for the heat job, put the wanted
+ * level on the player so there is something to lose.
+ */
+export function startMission(world, index) {
+  world.missionIndex = index;
+  world.missionStage = 0;
+  world.missionTimer = 0;
+  world.missionDone = false;
+  if (index === 2) {
+    world.wanted = Math.max(world.wanted, 2);
+    world.wantedTimer = 0;
+  }
+}
+
+/** Distance from the player (or their car) to a map point. */
+function distanceTo(world, x, y) {
+  const px = world.player.x;
+  const py = world.player.y;
+  return Math.hypot(px - x, py - y);
+}
+
+/**
+ * One mission step. Returns 'done' when the job completes (the world pays
+ * the reward and advances), 'failed' when a job can no longer be finished,
+ * otherwise null. `dt` is the fixed step.
+ */
+export function updateMission(world, dt) {
+  const mission = currentMission(world);
+  if (mission === null) return null;
+  world.missionTimer += dt;
+
+  if (mission.id === 'first-wheels') {
+    if (world.player.car !== null) return 'done';
+    return null;
+  }
+  if (mission.id === 'courier') {
+    if (world.player.car === null) return null;
+    const door = LANDMARK_DOORS['Palm Market'];
+    if (distanceTo(world, door.x, door.y) < 95) return 'done';
+    return null;
+  }
+  if (mission.id === 'heat-wave') {
+    if (world.wanted === 0 && world.missionTimer > 2) return 'done';
+    return null;
+  }
+  if (mission.id === 'bayview-job') {
+    if (world.missionStage === 0) {
+      const door = LANDMARK_DOORS['Bayview Bank'];
+      if (distanceTo(world, door.x, door.y) < 95) {
+        world.missionHold += dt;
+        if (world.missionHold >= 4) {
+          world.missionStage = 1;
+          world.missionTimer = 0;
         }
-        return 'complete';
-      }
-      if (m.id === 'kingpins-call') {
-        if (current.phase === 'go') {
-          current.phase = 'deliver';
-          current.hasBag = true;
-          current.waypoint = waypointFor(m, 'deliver', 0);
-          return 'progress';
-        }
-        return 'complete';
+      } else {
+        world.missionHold = 0;
       }
       return null;
-    },
-    /** Tick the mission clock. Returns 'timeout' when a timed mission runs out. */
-    tick(dt) {
-      if (!current || !current.mission.timer) return null;
-      current.timeLeft -= dt;
-      if (current.timeLeft <= 0) {
-        current.failed = true;
-        return 'timeout';
-      }
+    }
+    if (world.missionStage === 1) {
+      const door = LANDMARK_DOORS['Reyes Garage'];
+      if (distanceTo(world, door.x, door.y) < 110) return 'done';
       return null;
-    },
-    complete() {
-      const done = current;
-      current = null;
-      return done;
-    },
-    fail() {
-      current = null;
-    },
-  };
+    }
+    return null;
+  }
+  if (mission.id === 'kingpins-call') {
+    const door = LANDMARK_DOORS.Marina;
+    if (distanceTo(world, door.x, door.y) < 95) return 'done';
+    return null;
+  }
+  return null;
+}
+
+/** The bank hold: seconds the player has stood at the Bayview door. */
+export function bankHoldTime(world) {
+  if (currentMission(world)?.id !== 'bayview-job') return 0;
+  if (world.missionStage !== 0) return 0;
+  return world.missionHold;
+}
+
+export function bankPlace() {
+  return landmark('Bayview Bank');
 }

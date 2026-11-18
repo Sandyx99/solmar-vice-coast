@@ -1,118 +1,140 @@
-// SOLMAR — Vice Coast. Every tuning number lives here, so the rest of the
-// game never hard-codes a speed, a colour or a city coordinate. The world is
-// a fixed 3600 x 2600 city; the renderer scales the camera to the window, so
-// nothing below depends on the screen size.
+// Every number that tunes SOLMAR — Vice Coast lives here, so the rest of the
+// game never hard-codes a size, a speed or a colour. The world is one big
+// top-down map; the screen shows a 1280x720 window that follows the player.
 
+export const WORLD = { width: 3600, height: 2600 };
+export const VIEW = { width: 1280, height: 720 };
+
+/** The simulation's fixed step, in seconds: 60 updates a second. */
 export const STEP = 1 / 60;
 
-export const WORLD = { w: 3600, h: 2600 };
-
-// Roads: avenues run north-south, streets east-west. ROAD_W is the asphalt
-// width, and a sidewalk band runs along both sides of every road.
+/** Seven avenues run north-south, five streets run east-west. */
+export const AVENUES = [300, 700, 1100, 1500, 1900, 2300, 2700];
+export const STREETS = [300, 700, 1100, 1500, 1900];
 export const ROAD_W = 96;
-export const SIDEWALK = 26;
-export const AVENUES = [360, 810, 1260, 1710, 2160, 2610, 3060];
-export const STREETS = [360, 810, 1260, 1710, 2160];
 
-// The east edge: sand, then open water. Everything west of BEACH_X is city.
-export const BEACH_X = 3300;
-export const WATER_X = 3480;
+/** East of this line the ground is sand; east of the second, it is sea. */
+export const BEACH_X = 3080;
+export const SEA_X = 3360;
+
+/** Where the player starts: the garage forecourt, south of Reyes Garage. */
+export const SPAWN = { x: 470, y: 560 };
 
 export const PLAYER = {
   radius: 13,
-  walkSpeed: 210,
-  sprintSpeed: 330,
+  walk: 235,
+  sprint: 350,
   health: 100,
-  punchDamage: 20,
-  punchRange: 34,
+  punchRange: 46,
+  punchDamage: 34,
   punchCooldown: 0.45,
-  shootCooldown: 0.22,
-  bulletDamage: 34,
+  shotCooldown: 0.22,
   bulletSpeed: 950,
-  enterCarRange: 70,
+  bulletDamage: 26,
+  regenDelay: 5,
+  regenRate: 2.5,
 };
 
 export const CAR = {
-  // Per body type: length, width, top speed, acceleration, steering grip.
-  types: {
-    sedan: { len: 58, wid: 28, top: 520, accel: 300, grip: 2.6, color: '#d8b13c' },
-    taxi: { len: 58, wid: 28, top: 500, accel: 290, grip: 2.6, color: '#f2c230' },
-    coupe: { len: 54, wid: 27, top: 620, accel: 380, grip: 3.1, color: '#c94f6d' },
-    van: { len: 68, wid: 30, top: 430, accel: 230, grip: 2.1, color: '#7fa8c9' },
-    pickup: { len: 62, wid: 29, top: 540, accel: 320, grip: 2.7, color: '#5da271' },
-    police: { len: 58, wid: 28, top: 640, accel: 420, grip: 3.2, color: '#20242e' },
-  },
-  reverseTop: 170,
-  drag: 0.55,
-  brake: 620,
-  handbrakeGrip: 1.4,
-  crashDamage: 14,
+  radius: 17,
+  length: 46,
+  width: 22,
+  accel: 430,
+  brake: 760,
+  reverseMax: 190,
+  topSpeed: 560,
+  turnRate: 2.7,
+  grip: 3.2,
+  health: 100,
 };
 
-export const TRAFFIC = { count: 11, speedMin: 130, speedMax: 215, spawnGap: 240 };
-export const PEDS = { count: 26, walkMin: 34, walkMax: 66 };
+export const TRAFFIC = {
+  count: 14,
+  speedMin: 165,
+  speedMax: 255,
+  followGap: 78,
+  spawnClear: 320,
+};
 
-export const WANTED = {
-  stealCar: 16,
-  hitPed: 12,
-  shoot: 10,
-  killPed: 20,
-  killCop: 26,
-  // Heat at or above each line shows that many stars.
-  lines: [10, 26, 46, 66, 86],
-  decayPerSec: 1.6,
-  decayDelay: 5,
-  // Police cars / foot cops chasing at each star level (index = stars).
-  cars: [0, 1, 2, 3, 4, 5],
-  cops: [0, 0, 2, 3, 4, 5],
+export const PED = {
+  count: 22,
+  walkMin: 42,
+  walkMax: 78,
+  fleeSpeed: 165,
+  radius: 9,
 };
 
 export const POLICE = {
-  carSight: 760,
-  footSpeed: 235,
-  arrestRange: 42,
+  carSpeed: 590,
+  footSpeed: 265,
+  arrestRange: 30,
   arrestTime: 1.4,
-  shootRange: 320,
-  shootCooldown: 0.9,
+  shootRange: 420,
+  shootCooldown: 1.1,
   bulletDamage: 7,
 };
 
-export const MONEY = { start: 50, respawnKeep: 0.5 };
+export const WANTED = {
+  max: 5,
+  decaySeconds: 26,
+  garageMultiplier: 3,
+  steal: 1,
+  shoot: 1,
+  killPed: 1,
+  punchCop: 1,
+  ramCop: 1,
+};
 
+/** Cash paid for each of Mara's five jobs, in order. */
+export const REWARDS = [500, 900, 1400, 2600, 5000];
+
+/** Colours for the dusk city: warm asphalt, neon signs, sand and sea. */
 export const PALETTE = {
-  grass: '#7fb069',
-  grassDark: '#6da05c',
-  sand: '#e8d5a4',
-  water: '#2fa8c9',
-  waterDeep: '#1f7fa8',
-  asphalt: '#3a3f4a',
-  asphaltDark: '#333743',
-  road: '#3a3f4a',
-  dash: '#e8d44d',
-  lot: '#9a948a',
-  lane: '#e8d44d',
-  sidewalk: '#b9b3a4',
-  curb: '#8f887a',
-  roofA: '#e07856',
-  roofB: '#e8a94f',
-  roofC: '#7fb3d5',
-  roofD: '#c97b9a',
-  roofE: '#8fae7e',
-  park: '#5d9b52',
-  tree: '#2f7d3a',
-  treeLight: '#4da34a',
-  buildingEdge: 'rgba(0,0,0,0.28)',
+  backdrop: '#0d0f16',
+  block: '#232833',
+  blockAlt: '#20242e',
+  road: '#333842',
+  roadEdge: '#454b58',
+  roadLine: '#c8b45a',
+  sidewalk: '#3a3f4b',
+  sand: '#b99c6b',
+  sandWet: '#a8895c',
+  sea: '#1d5f86',
+  seaDeep: '#174a6b',
+  wave: '#7fc4e8',
+  buildingRoof: '#4a5064',
+  buildingSide: '#2c3040',
+  buildingTrim: '#8f96ab',
+  palm: '#3f7a4a',
+  palmTrunk: '#6b4a2f',
   player: '#ffd23f',
-  cop: '#2b6cb0',
-  pedShirt: ['#e2622b', '#3e7cb1', '#9b59b6', '#27ae60', '#f39c12', '#e74c3c', '#16a085', '#d35400'],
-  hudBg: 'rgba(12,16,24,0.72)',
-  hudText: '#f4f1e8',
-  hudGold: '#ffd23f',
+  playerDark: '#c79a12',
+  pedShirt: ['#e06a6a', '#6aa8e0', '#7ed07e', '#e0c06a', '#b07ee0', '#e08ab0'],
+  policeCar: '#e8e8e8',
+  policeDark: '#20242e',
+  lightRed: '#ff3b30',
+  lightBlue: '#2f7bff',
+  cop: '#2f4a7a',
+  bullet: '#ffe9a8',
+  muzzle: '#ffd76a',
+  marker: '#ffe14d',
+  markerRing: '#ff9f1c',
+  cash: '#7ee081',
+  health: '#5ad06a',
+  healthLow: '#e5534b',
   star: '#ffd23f',
-  starOff: 'rgba(255,255,255,0.25)',
+  starEmpty: '#5a6070',
+  text: '#eef1f5',
+  muted: '#9aa1b1',
+  panel: '#181c26',
+  panelEdge: '#3a4152',
+  banner: '#ffe14d',
+  neonPink: '#ff5da2',
+  neonCyan: '#37e0d8',
+  neonOrange: '#ff9f1c',
 };
 
 export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 
-/** Where the save lives between visits (this browser only). */
+/** Where the save is kept between visits (this browser only). */
 export const SAVE_KEY = 'solmar.save.v1';

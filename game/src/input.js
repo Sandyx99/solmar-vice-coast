@@ -1,109 +1,98 @@
-// Keyboard and pointer input. Held keys give a move/steer vector every frame;
-// one-shot presses (confirm, pause, enter car, punch, mute) are queued as bit
-// flags and taken once by the loop, so a press between two frames is never lost
-// and never counted twice. The mouse position is kept in screen pixels and
-// turned into a world aim point by the renderer.
+// Keyboard and mouse input. Held keys give movement and driving; the mouse
+// gives the aim point and fires while held; one-shot presses (confirm,
+// pause, steal, punch) are queued as flags and taken once by the loop, so a
+// press between two frames is never lost and never counted twice.
 
 export const ACTION_CONFIRM = 1;
 export const ACTION_PAUSE = 2;
 export const ACTION_ENTER = 4;
 export const ACTION_PUNCH = 8;
-export const ACTION_MUTE = 16;
 
 const UP = new Set(['ArrowUp', 'KeyW']);
 const DOWN = new Set(['ArrowDown', 'KeyS']);
 const LEFT = new Set(['ArrowLeft', 'KeyA']);
 const RIGHT = new Set(['ArrowRight', 'KeyD']);
-const CONFIRM = new Set(['Enter', 'Space']);
+const CONFIRM = new Set(['Space', 'Enter']);
 const PAUSE = new Set(['KeyP', 'Escape']);
-const ENTER = new Set(['KeyE']);
-const PUNCH = new Set(['KeyF']);
-const MUTE = new Set(['KeyM']);
 const SPRINT = new Set(['ShiftLeft', 'ShiftRight']);
-const BRAKE = new Set(['Space']);
+const PUNCH = new Set(['KeyF']);
 
-export function createInput(target) {
-  const held = new Set();
-  let actions = 0;
-  let mouse = { x: 0, y: 0, down: false };
-  let mouseDownQueued = false;
+export function createInput(canvas) {
+  const held = { up: false, down: false, left: false, right: false, sprint: false };
+  const mouse = { x: 0, y: 0, down: false, seen: false };
+  let queued = 0;
 
-  window.addEventListener('keydown', (event) => {
-    if (UP.has(event.code) || DOWN.has(event.code) || LEFT.has(event.code) || RIGHT.has(event.code)
-      || SPRINT.has(event.code) || BRAKE.has(event.code)) {
-      held.add(event.code);
-      event.preventDefault();
-    } else if (CONFIRM.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_CONFIRM;
-      event.preventDefault();
+  function press(event) {
+    if (UP.has(event.code)) held.up = true;
+    else if (DOWN.has(event.code)) held.down = true;
+    else if (LEFT.has(event.code)) held.left = true;
+    else if (RIGHT.has(event.code)) held.right = true;
+    else if (SPRINT.has(event.code)) held.sprint = true;
+    else if (CONFIRM.has(event.code)) {
+      if (!event.repeat) queued |= ACTION_CONFIRM;
     } else if (PAUSE.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_PAUSE;
-    } else if (ENTER.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_ENTER;
+      if (!event.repeat) queued |= ACTION_PAUSE;
+    } else if (event.code === 'KeyE') {
+      if (!event.repeat) queued |= ACTION_ENTER;
     } else if (PUNCH.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_PUNCH;
-    } else if (MUTE.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_MUTE;
-    }
-  });
-  window.addEventListener('keyup', (event) => {
-    held.delete(event.code);
-  });
-  // A key released while the tab is hidden never sends keyup: let go of
-  // everything on blur.
+      if (!event.repeat) queued |= ACTION_PUNCH;
+    } else return;
+    event.preventDefault();
+  }
+
+  function release(event) {
+    if (UP.has(event.code)) held.up = false;
+    else if (DOWN.has(event.code)) held.down = false;
+    else if (LEFT.has(event.code)) held.left = false;
+    else if (RIGHT.has(event.code)) held.right = false;
+    else if (SPRINT.has(event.code)) held.sprint = false;
+  }
+
+  window.addEventListener('keydown', press);
+  window.addEventListener('keyup', release);
+  // A key let go while the tab is hidden never sends keyup: drop everything.
   window.addEventListener('blur', () => {
-    held.clear();
+    held.up = false;
+    held.down = false;
+    held.left = false;
+    held.right = false;
+    held.sprint = false;
     mouse.down = false;
   });
-  target.addEventListener('pointermove', (event) => {
-    const rect = target.getBoundingClientRect();
-    mouse.x = event.clientX - rect.left;
-    mouse.y = event.clientY - rect.top;
+  canvas.addEventListener('pointermove', (event) => {
+    mouse.x = event.clientX;
+    mouse.y = event.clientY;
+    mouse.seen = true;
   });
-  target.addEventListener('pointerdown', (event) => {
-    const rect = target.getBoundingClientRect();
-    mouse.x = event.clientX - rect.left;
-    mouse.y = event.clientY - rect.top;
+  canvas.addEventListener('pointerdown', (event) => {
+    mouse.x = event.clientX;
+    mouse.y = event.clientY;
+    mouse.seen = true;
     mouse.down = true;
-    mouseDownQueued = true;
+    queued |= ACTION_CONFIRM;
     event.preventDefault();
   });
   window.addEventListener('pointerup', () => {
     mouse.down = false;
   });
 
-  function has(set) {
-    for (const code of set) if (held.has(code)) return true;
-    return false;
-  }
-
   return {
-    /** Move vector: x right, y down, each -1, 0 or 1. */
-    move() {
+    /** The frame's controls: -1/0/1 movement, sprint, mouse aim and fire. */
+    snapshot() {
       return {
-        x: (has(RIGHT) ? 1 : 0) - (has(LEFT) ? 1 : 0),
-        y: (has(DOWN) ? 1 : 0) - (has(UP) ? 1 : 0),
+        moveX: (held.right ? 1 : 0) - (held.left ? 1 : 0),
+        moveY: (held.down ? 1 : 0) - (held.up ? 1 : 0),
+        sprint: held.sprint,
+        shoot: mouse.down,
+        mouseX: mouse.x,
+        mouseY: mouse.y,
+        mouseSeen: mouse.seen,
       };
-    },
-    sprint() {
-      return has(SPRINT);
-    },
-    brake() {
-      return has(BRAKE);
-    },
-    mouse() {
-      return mouse;
-    },
-    /** True once for a fresh mouse press since the last call. */
-    takeMousePress() {
-      const pressed = mouseDownQueued;
-      mouseDownQueued = false;
-      return pressed;
     },
     /** The one-shot presses since the last call, as ACTION_* flags. */
     takeActions() {
-      const taken = actions;
-      actions = 0;
+      const taken = queued;
+      queued = 0;
       return taken;
     },
   };

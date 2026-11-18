@@ -1,138 +1,234 @@
-// SOLMAR — Vice Coast: entry point. Boots the world, owns the game loop and
-// the screen state machine (start / play / pause / wasted / busted), and runs
-// the screenshot poses when the page is asked to. The world does the
-// simulating; this file does the wiring.
-
-import { createRng } from './random.js';
-import { createWorld, EVENT_CASH, EVENT_MISSION_DONE, EVENT_MISSION_FAIL, EVENT_OVER } from './world.js';
-import { createRenderer } from './render.js';
-import { createInput, ACTION_CONFIRM, ACTION_ENTER, ACTION_MUTE, ACTION_PAUSE, ACTION_PUNCH } from './input.js';
+// Boot and the one loop: input is read every frame, the world advances in
+// fixed 1/60 s steps (several in a slow frame, none in a fast one), the
+// renderer paints what is there, and the audio follows the car and the heat.
+// The game moves between five screens: title, play, paused, wasted and
+// busted. Progress (cash and jobs done) is saved in local storage.
+//
+// ?seed=N fixes the traffic and the pedestrians. ?shot=start|play|chase|
+// mission (with &seed=N) stages that scene instead of running the loop,
+// paints it twice and sets window.__shotReady for a screenshot.
+import { CAR, SAVE_KEY, STEP } from './config.js';
+import { createRandom } from './random.js';
+import { createWorld, EVENT_BUSTED, EVENT_CASH, EVENT_CRASH, EVENT_HIT, EVENT_MISSION, EVENT_PUNCH, EVENT_SHOT, EVENT_STEAL, EVENT_WASTED } from './world.js';
+import { ACTION_CONFIRM, ACTION_ENTER, ACTION_PAUSE, ACTION_PUNCH, createInput } from './input.js';
+import { createRenderer, SCREEN_BUSTED, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WASTED } from './render.js';
 import { createAudio } from './audio.js';
-import { runPose, poseNames } from './shots.js';
+import { currentMission, MISSIONS } from './missions.js';
+import { stageShot } from './shots.js';
+
+/** The longest frame the loop catches up on; a longer stall is dropped. */
+const MAX_FRAME = 0.25;
+/** How long a banner stays on screen, in seconds. */
+const BANNER_SECONDS = 4.5;
+
+const params = new URLSearchParams(window.location.search);
+const shot = params.get('shot');
+const seedParam = Number.parseInt(params.get('seed') ?? '', 10);
+const seed = Number.isInteger(seedParam) ? seedParam : Math.floor(Math.random() * 4294967296);
 
 const canvas = document.getElementById('game');
-const rng = createRng(20261118);
-const world = createWorld(rng, 20261118);
+const status = document.getElementById('status');
+const world = createWorld(createRandom(seed), loadSave());
+// A debug handle for live playtests (read the state, never write it).
+window.__solmar = world;
 const renderer = createRenderer(canvas);
-const input = createInput(canvas);
 const audio = createAudio();
-// The world plays its own sound effects (gunfire, crashes, pickups, the
-// mission jingle) and the engine hum through this audio object.
-world.state.audio = audio;
 
-let screen = 'start';
-let lastTime = 0;
-let overTimer = 0;
+/** The controls when nothing is pressed (the title screen's backdrop). */
+const IDLE = {
+  moveX: 0, moveY: 0, sprint: false,
+  driveThrottle: 0, driveSteer: 0, driveBrake: false,
+  enter: false, punch: false, shoot: false, aimX: 0, aimY: 0,
+};
 
-function startGame() {
-  audio.unlock();
-  audio.startMusic();
-  world.reset();
-  screen = 'play';
-}
-
-function applyEvents(events) {
-  if (events & EVENT_OVER) {
-    screen = world.state.over === 'busted' ? 'busted' : 'wasted';
-    overTimer = 0;
-    audio.stopMusic();
-    if (screen === 'busted') audio.fail();
-    else audio.wasted();
-  } else if (events & EVENT_MISSION_DONE) {
-    audio.mission();
-  } else if (events & EVENT_MISSION_FAIL) {
-    audio.fail();
-  } else if (events & EVENT_CASH) {
-    audio.cash();
+function loadSave() {
+  try {
+    const raw = window.localStorage.getItem(SAVE_KEY);
+    if (raw === null) return { cash: 0, missionIndex: 0 };
+    const parsed = JSON.parse(raw);
+    return {
+      cash: Number(parsed.cash) || 0,
+      missionIndex: Math.max(0, Math.min(MISSIONS.length, Number(parsed.missionIndex) || 0)),
+    };
+  } catch {
+    return { cash: 0, missionIndex: 0 };
   }
 }
 
-function frame(now) {
-  requestAnimationFrame(frame);
-  const dt = Math.min(0.05, (now - lastTime) / 1000 || 0.016);
-  lastTime = now;
-  const actions = input.takeActions();
-  const mouse = input.mouse();
+function saveGame() {
+  try {
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify({
+      cash: world.state.cash,
+      missionIndex: world.state.missionIndex,
+    }));
+  } catch {
+    // Storage can be off (private windows): progress then lasts this visit only.
+  }
+}
 
-  if (actions & ACTION_MUTE) {
-    audio.unlock();
-    const muted = audio.toggleMute();
-    world.say(muted ? 'Sound off' : 'Sound on', 1.5);
+function runShot(name) {
+  const scene = stageShot(name, world);
+  let painted = 0;
+  function paint() {
+    renderer.draw(world.state, scene.screen, loadSave(), null, world.state.elapsed);
+    painted += 1;
+    if (painted < 2) requestAnimationFrame(paint);
+    else window.__shotReady = true;
+  }
+  requestAnimationFrame(paint);
+}
+
+function runGame() {
+  const input = createInput(canvas);
+  let screen = SCREEN_TITLE;
+  let banner = null;
+  let accumulator = 0;
+  let last = performance.now();
+
+  function announce(message) {
+    status.textContent = message;
   }
 
-  if (screen === 'start') {
-    if (actions & ACTION_CONFIRM) startGame();
-    renderer.draw(world, 'start', now / 1000);
-    return;
+  function showBanner(text) {
+    banner = { text, until: world.state.elapsed + BANNER_SECONDS };
   }
-  if (screen === 'pause') {
+
+  function missionBanner() {
+    const mission = currentMission(world.state);
+    if (mission === null) return;
+    showBanner(`${mission.title} — ${mission.objective}`);
+    announce(`Mara Reyes: ${mission.brief}`);
+  }
+
+  function startGame() {
+    audio.ensure();
+    world.reset();
+    accumulator = 0;
+    screen = SCREEN_PLAY;
+    missionBanner();
+  }
+
+  function endGame(kind) {
+    screen = kind;
+    saveGame();
+    if (kind === SCREEN_WASTED) announce(`Wasted. Cash kept $${world.state.cash}.`);
+    else announce('Busted. The Solmar PD caught up with you.');
+  }
+
+  function react(events) {
+    if (events & EVENT_SHOT) audio.shot();
+    if (events & EVENT_PUNCH) audio.punch();
+    if (events & (EVENT_HIT | EVENT_CRASH)) audio.crash();
+    if (events & EVENT_STEAL) {
+      audio.steal();
+      showBanner('The car is yours now');
+    }
+    if (events & EVENT_MISSION) {
+      audio.jingle();
+      const done = world.state.missionIndex - 1;
+      const mission = MISSIONS[done];
+      showBanner(`Job done: ${mission.title} — +$${mission.reward.toLocaleString('en-US')}`);
+      saveGame();
+      if (world.state.storyDone) {
+        showBanner('THE CITY IS YOURS — free roam, Solmar');
+      } else {
+        missionBanner();
+      }
+    }
+    if (events & EVENT_BUSTED) endGame(SCREEN_BUSTED);
+    else if (events & EVENT_WASTED) endGame(SCREEN_WASTED);
+    void EVENT_CASH;
+  }
+
+  function buildInput() {
+    const snap = input.snapshot();
+    const state = world.state;
+    const aim = snap.mouseSeen
+      ? renderer.toWorld(snap.mouseX, snap.mouseY)
+      : { x: state.player.x + Math.cos(state.player.angle) * 120, y: state.player.y + Math.sin(state.player.angle) * 120 };
+    const inCar = state.player.car !== null;
+    return {
+      moveX: snap.moveX,
+      moveY: snap.moveY,
+      sprint: snap.sprint,
+      driveThrottle: inCar ? -snap.moveY : 0,
+      driveSteer: inCar ? snap.moveX : 0,
+      driveBrake: false,
+      enter: false,
+      punch: false,
+      shoot: snap.shoot,
+      aimX: aim.x,
+      aimY: aim.y,
+    };
+  }
+
+  function step(actions, first) {
+    const frameInput = buildInput();
+    frameInput.enter = first && (actions & ACTION_ENTER) !== 0;
+    frameInput.punch = first && (actions & ACTION_PUNCH) !== 0;
+    const events = world.step(STEP, frameInput, false);
+    react(events);
+  }
+
+  function handleActions(actions) {
+    if (actions & ACTION_CONFIRM) {
+      audio.ensure();
+      if (screen === SCREEN_TITLE || screen === SCREEN_WASTED || screen === SCREEN_BUSTED) startGame();
+      else if (screen === SCREEN_PAUSED) {
+        screen = SCREEN_PLAY;
+        announce('Playing.');
+      }
+    }
     if (actions & ACTION_PAUSE) {
-      screen = 'play';
-      audio.unlock();
+      if (screen === SCREEN_PLAY) {
+        screen = SCREEN_PAUSED;
+        announce('Paused.');
+      } else if (screen === SCREEN_PAUSED) {
+        screen = SCREEN_PLAY;
+        announce('Playing.');
+      }
     }
-    if (actions & ACTION_CONFIRM) startGame();
-    renderer.draw(world, 'pause', now / 1000);
-    return;
-  }
-  if (screen === 'wasted' || screen === 'busted') {
-    overTimer += dt;
-    if ((actions & ACTION_CONFIRM) && overTimer > 0.8) {
-      world.respawn();
-      audio.unlock();
-      audio.startMusic();
-      screen = 'play';
-    }
-    renderer.draw(world, screen, now / 1000);
-    return;
   }
 
-  if (actions & ACTION_PAUSE) {
-    screen = 'pause';
-    renderer.draw(world, 'pause', now / 1000);
-    return;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    accumulator += Math.min((now - last) / 1000, MAX_FRAME);
+    last = now;
+    const actions = input.takeActions();
+    handleActions(actions);
+    if (screen === SCREEN_TITLE) {
+      while (accumulator >= STEP) {
+        world.step(STEP, IDLE, true);
+        accumulator -= STEP;
+      }
+    } else if (screen === SCREEN_PLAY) {
+      let first = true;
+      while (accumulator >= STEP) {
+        step(actions, first);
+        first = false;
+        accumulator -= STEP;
+        if (screen !== SCREEN_PLAY) break;
+      }
+    } else {
+      accumulator = 0;
+    }
+    const player = world.state.player;
+    const driving = player.car !== null;
+    audio.update(STEP, driving, driving ? Math.abs(player.car.speed) / CAR.topSpeed : 0, world.state.wanted);
+    renderer.draw(world.state, screen, loadSave(), banner, world.state.elapsed);
   }
 
-  const st = world.state;
-  const mouseWorld = renderer.screenToWorld(mouse.x, mouse.y);
-  const controls = {
-    move: input.move(),
-    sprint: input.sprint(),
-    brake: input.brake(),
-    aim: mouseWorld,
-    firing: mouse.down,
-    punch: Boolean(actions & ACTION_PUNCH),
-    enter: Boolean(actions & ACTION_ENTER),
-  };
-  const events = world.step(dt, controls);
-  applyEvents(events);
-  renderer.draw(world, 'play', now / 1000);
+  // Leaving the tab pauses a running game rather than letting it run unseen.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && screen === SCREEN_PLAY) {
+      screen = SCREEN_PAUSED;
+      announce('Paused.');
+    }
+  });
+
+  announce('SOLMAR — Vice Coast. Press Space or click to start.');
+  requestAnimationFrame(frame);
 }
 
-// Screenshot poses, for the entry's four shots: the page is opened with
-// ?shot=<name>, the pose runs, and window.__shotReady flips true when the
-// frame is ready to capture.
-function runShotPose() {
-  const params = new URLSearchParams(window.location.search);
-  const shot = params.get('shot');
-  if (!shot) return false;
-  audio.unlock();
-  const pose = runPose(world, shot);
-  let frames = 0;
-  const stepMs = 1000 / 60;
-  const interval = setInterval(() => {
-    const events = world.step(stepMs / 1000, pose.controls());
-    applyEvents(events);
-    frames += 1;
-    renderer.draw(world, 'play', frames / 60);
-    if (frames >= pose.frames) {
-      clearInterval(interval);
-      renderer.draw(world, 'play', frames / 60);
-      window.__shotReady = true;
-    }
-  }, stepMs);
-  return true;
-}
-
-world.reset();
-window.__solmar = { world, renderer, input, audio, poseNames: poseNames() };
-if (!runShotPose()) requestAnimationFrame(frame);
+if (shot) runShot(shot);
+else runGame();
